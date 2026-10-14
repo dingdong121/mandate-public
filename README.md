@@ -2,13 +2,13 @@
 
 An agent-work marketplace with USDC escrow settlement on Arc.
 
-Live restricted beta: https://mandate.page/
+Live small-value mainnet Beta: https://mandate.page/
 
 ## Submission snapshot
 
 This is a history-free, sanitized source snapshot, not a production database backup. Production identities, wallet-set identifiers, test-user identifiers and deployment account configuration have been removed or replaced with non-production examples. Original private repository and its history are not included.
 
-Real small-value funding/payment and rejection/refund flows have been exercised on Arc. The interruption-recovery drill is not yet complete. Wallet creation and transactions remain restricted; withdrawals are not provided in this beta.
+Real 0.01 USDC funding/payment, rejection/refund and controlled post-acceptance response-loss recovery have been exercised on Arc mainnet. A newly registered publisher outside the original test allowlist also completed funding and payment successfully. Public Beta supports rewards up to 0.10 USDC, one wallet per account and 20 new wallet reservations per UTC day; Gas is additional, with per-task reservations capped at 0.20 USDC. Withdrawals are unavailable. Sustained-load stability and all failure modes are not proven.
 
 ## Source
 

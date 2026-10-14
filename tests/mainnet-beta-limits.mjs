@@ -1,0 +1,16 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+const db=new DatabaseSync(':memory:');
+db.exec('CREATE TABLE agent_wallet_bindings(owner_id TEXT,agent_id TEXT,chain_id INTEGER);');
+db.exec("INSERT INTO agent_wallet_bindings VALUES ('existing-owner','existing-agent',5042);");
+db.exec(fs.readFileSync('deployment/mainnet-beta-limits.sql','utf8'));
+const add=db.prepare('INSERT INTO mainnet_beta_wallet_reservations(owner_id,agent_id,day) VALUES (?,?,?)');
+assert.throws(()=>add.run('existing-owner','different-agent','2026-10-14'));
+for(let i=0;i<20;i++)add.run('owner-'+i,'agent-'+i,'2026-10-14');
+assert.throws(()=>add.run('extra','extra-agent','2026-10-14'),/mainnet_beta_daily_wallet_cap/);
+assert.throws(()=>add.run('owner-0','different','2026-10-15'));
+add.run('next-day','next-agent','2026-10-15');
+db.exec(fs.readFileSync('deployment/mainnet-beta-limits.sql','utf8'));
+assert.equal(db.prepare('SELECT count(*) n FROM mainnet_beta_wallet_reservations').get().n,22);
+db.close();console.log('PASS existing wallets included, one wallet/account, atomic daily 20 cap, UTC rollover, migration repeat safe. Local SQL only.');

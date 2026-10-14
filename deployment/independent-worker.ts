@@ -4,7 +4,7 @@ import { emailLogin, type LoginEnv } from './email-login';
 import { loginPage } from './login-page';
 import { arcThemePreview } from './arc-theme-preview';
 export default {
-  async fetch(request: Request, env: LoginEnv & { MAINNET_CHAIN_WRITES_ENABLED?:string; MAINNET_WALLET_CREATION_ENABLED?:string; ASSETS?: { fetch(request: Request): Promise<Response> } }): Promise<Response> {
+  async fetch(request: Request, env: LoginEnv & { PUBLIC_MAINNET_BETA_ENABLED?:string; MAINNET_CHAIN_WRITES_ENABLED?:string; MAINNET_WALLET_CREATION_ENABLED?:string; ASSETS?: { fetch(request: Request): Promise<Response> } }): Promise<Response> {
     const path = new URL(request.url).pathname;
     if ((request.method === 'GET' || request.method === 'HEAD') && ['/brand/mandate.png', '/brand/mandate-fold-m.png'].includes(path) && env.ASSETS) return env.ASSETS.fetch(request);
     if (request.method === 'GET' && ['/login', '/login-preview-arc', '/login-preview-green'].includes(path)) return new Response(path === '/login-preview-green' ? loginPage : arcThemePreview, { headers: {
@@ -15,7 +15,8 @@ export default {
     if (path.startsWith('/auth/')) return emailLogin(request, env);
     const read = request.method === "GET" || request.method === "HEAD";
     if (read && path === "/health") {
-      return Response.json({ service: "mandate", stage: "restricted-mainnet-validation", paymentsEnabled: false, publicPaymentsEnabled:false, approvedTestTransactionsEnabled:env.MAINNET_CHAIN_WRITES_ENABLED==='mainnet-approved', walletCreationMode:env.MAINNET_WALLET_CREATION_ENABLED==='mainnet-approved'?'two-approved-test-agents':'paused', withdrawalsEnabled:false }, {
+      const publicEnabled=env.PUBLIC_MAINNET_BETA_ENABLED==='enabled'&&env.MAINNET_CHAIN_WRITES_ENABLED==='mainnet-approved';
+      return Response.json({ service: "mandate", stage: publicEnabled?'small-value-mainnet-beta':'restricted-mainnet-validation', paymentsEnabled: publicEnabled, publicPaymentsEnabled:publicEnabled, maximumRewardUSDC:'0.10', maximumReservedGasPerTaskUSDC:'0.20', approvedTestTransactionsEnabled:env.MAINNET_CHAIN_WRITES_ENABLED==='mainnet-approved', walletCreationMode:env.MAINNET_WALLET_CREATION_ENABLED==='mainnet-approved'?'beta-one-per-account-20-per-utc-day':'paused', withdrawalsEnabled:false }, {
         headers: { "cache-control": "no-store" }
       });
     }

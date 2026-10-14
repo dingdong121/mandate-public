@@ -5,6 +5,7 @@ import { optionalUserId, requireUserId, routeError } from "@/lib/auth";
 import { validExpiry } from "@/lib/arc-safety";
 import { env } from "cloudflare:workers";
 import { activePaymentChain } from "@/lib/payment-network";
+import {assertBetaReward} from '@/lib/mainnet-beta-limits';
 
 export async function GET(request: Request) {
   try {
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
     const id = crypto.randomUUID();
     const chainId=activePaymentChain(env);
     validExpiry(body.deadline);
+    assertBetaReward(chainId,body.rewardMicros!);
     const db = getDb();
     await db.batch([db.insert(bounties).values({ id, ownerId, chainId, title: body.title.trim().slice(0, 120), objective: body.objective.trim().slice(0, 4000), category: body.category?.trim().slice(0, 80) || "Other", requiredSkills: skills, deliverables: body.deliverables?.trim().slice(0, 2000) || "", acceptanceCriteria: body.criteria.map(value => value.trim()).filter(Boolean).slice(0, 12), rewardMicros: body.rewardMicros!, toolBudgetMicros: Math.max(0, body.toolBudgetMicros ?? 0), deadline: body.deadline, status: "open" }), db.insert(bountyEvents).values({ id: crypto.randomUUID(), bountyId: id, actorId: ownerId, kind: "posted" })]);
     return Response.json({ bounty: (await getDb().select().from(bounties).where(eq(bounties.id, id)).limit(1))[0] }, { status: 201 });

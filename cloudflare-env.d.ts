@@ -14,6 +14,7 @@ declare namespace Cloudflare {
     ESCROW_DEPLOYMENT_ENABLED?: string;
     PAYMENT_CHAIN_ID?: string;
     MAINNET_CHAIN_WRITES_ENABLED?: string;
+    PUBLIC_MAINNET_BETA_ENABLED?: string;
     MAINNET_WALLET_CREATION_ENABLED?: string;
     CIRCLE_MAINNET_API_KEY?: string;
     CIRCLE_MAINNET_ENTITY_SECRET?: string;

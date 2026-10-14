@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { and, eq } from "drizzle-orm";
 import { initiateDeveloperControlledWalletsClient } from "@circle-fin/developer-controlled-wallets";
 import { getDb } from "@/db";
-import { agents, bounties, financialOperations, fundingSessions, contractDeployments } from "@/db/schema";
+import { agents, bounties, financialOperations, fundingSessions, contractDeployments, agentWalletBindings } from "@/db/schema";
 import { claimOperation, reconcileOperation, uncertainOperation } from "./financial-operations";
 import { assertChainWritesEnabled, guardedChainWrite } from "./chain-write-control";
 import { circleDiagnostic } from "./circle-diagnostic";
@@ -11,7 +11,6 @@ import { assertPaymentNetwork, fail, jobIdFromReceipt, receiptEvent, rpc, valida
 import { paymentCredentials, paymentNetwork } from "./payment-network";
 import { assertMainnetTestScope } from './mainnet-test-scope';
 import {executionFee} from './mainnet-test-fee';
-import {simulateMainnetResponseLoss} from './mainnet-response-loss';
 
 export type Bounty = typeof bounties.$inferSelect;
 export function circleClient(chainId = 5042002) {
@@ -23,6 +22,10 @@ export async function providerAgent(bounty: Bounty) {
   if (!bounty.providerAgentId) fail("Select an agent before an escrow operation");
   const agent = (await getDb().select().from(agents).where(eq(agents.id, bounty.providerAgentId)).limit(1))[0];
   if (!agent || agent.chainId !== bounty.chainId || agent.walletProvider !== "circle" || !agent.walletId || !agent.walletAddress) fail("Agent wallet network does not match the bounty");
+  if(bounty.chainId===5042){
+    const binding=(await getDb().select().from(agentWalletBindings).where(and(eq(agentWalletBindings.agentId,agent.id),eq(agentWalletBindings.ownerId,agent.ownerId),eq(agentWalletBindings.chainId,5042),eq(agentWalletBindings.walletId,agent.walletId))).limit(1))[0];
+    if(!binding||binding.walletAddress.toLowerCase()!==agent.walletAddress.toLowerCase())fail('Provider wallet ownership binding unavailable',423);
+  }
   return agent;
 }
 export async function validateSigner(bounty: Bounty, walletId: string, address: string) {
@@ -67,7 +70,6 @@ export async function sendEscrow(request: Request, owner: string, bounty: Bounty
     const response = await guardedChainWrite(bounty.chainId, () => circleClient(bounty.chainId).createContractExecutionTransaction({ idempotencyKey: operation.circle_key, walletId, contractAddress: target, abiFunctionSignature: signature, abiParameters: parameters, fee, refId: operation.id }));
     const transactionId = response.data?.id;
     if (!transactionId) throw new Error("Missing transaction ID");
-    await simulateMainnetResponseLoss(bounty,stage,operation.id);
     // Controlled recovery drill: server-only, exact dedicated Testnet bounty,
     // payment stage only. NEVER active on Mainnet or ordinary tasks. Simulates
     // response loss after provider acceptance and before app ID persistence.

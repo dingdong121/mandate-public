@@ -1,5 +1,6 @@
 import fs from 'node:fs';import vm from 'node:vm';import ts from 'typescript';import assert from 'node:assert/strict';
-const context={exports:{},require:()=>({fail:()=>{throw Error('denied');}})};
+const env={PUBLIC_MAINNET_BETA_ENABLED:'paused'};
+const context={exports:{},require:(name)=>name==='cloudflare:workers'?{env}:{fail:()=>{throw Error('denied');}}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/mainnet-test-scope.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,context);
 const check=context.exports.assertMainnetTestScope;
 const bounty={id:'b23f270b-3d8b-4f05-aea1-398644ca1295',chainId:5042,rewardMicros:10000,ownerId:'email_51b8b27d-62ea-4048-a61c-3e10418094c1',providerAgentId:'f31f7f50-5812-470c-af63-fb0e6b6b07c1'};
@@ -12,3 +13,10 @@ for(const stage of ['create_job_pending','budget_pending','approve_pending','fun
 assert.throws(()=>check(refund,'complete_pending'),/denied/);
 console.log('PASS refund task seven-stage scope; payout forbidden on refund test.');
 check({...bounty,id:'6085a20b-3758-4a4e-af9f-0b96876b00e9'},'complete_pending');
+env.PUBLIC_MAINNET_BETA_ENABLED='enabled';
+const publicTask={...bounty,id:'public-task',ownerId:'new-owner',providerAgentId:'new-agent',rewardMicros:100000};
+for(const stage of ['create_job_pending','budget_pending','approve_pending','fund_pending','submit_pending','complete_pending','reject_pending','refund_pending'])check(publicTask,stage);
+for(const rewardMicros of [0,-1,100001,NaN,1.5])assert.throws(()=>check({...publicTask,rewardMicros},'fund_pending'));
+assert.throws(()=>check({...publicTask,providerAgentId:null},'fund_pending'));
+assert.throws(()=>check(publicTask,'arbitrary'));
+console.log('PASS public Beta supported stages and 0.10 USDC bound; invalid reward/provider/action denied. Ownership is enforced separately by routes.');

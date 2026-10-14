@@ -7,6 +7,7 @@ import { paymentCredentials } from "@/lib/payment-network";
 import { requireUserId, routeError } from "@/lib/auth";
 import { CircleWalletProvider } from "@/lib/wallet-provider";
 import { assertWalletCreationEnabled } from "@/lib/chain-write-control";
+import {reserveBetaWallet} from '@/lib/mainnet-beta-limits';
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -17,14 +18,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!agent) return Response.json({ error: "Agent profile not found" }, { status: 404 });
     assertPaymentNetwork(agent.chainId);
     assertWalletCreationEnabled(agent.chainId);
-    if (agent.chainId===5042) {
-      // Exactly one selected Agent per approved test owner. Cannot bypass by
-      // creating more profiles or submitting another user's wallet/Agent ID.
-      const approval=await env.DB!.prepare('SELECT owner_id FROM mainnet_wallet_test_approvals WHERE owner_id=? AND agent_id=?').bind(ownerId,id).first();
-      if(!approval) return Response.json({error:'Mainnet wallet creation is limited to the two approved test accounts and their selected Agents'},{status:423});
-    }
+    // Mainnet provisioning uses account/day reservations below, not the old
+    // two-account test allowlist. Ownership and emergency pause remain enforced.
     if (agent.walletId || agent.walletAddress) return Response.json({ error: "This profile already has an Agent Account" }, { status: 409 });
     const credentials=paymentCredentials(agent.chainId,env,true);
+    if(agent.chainId===5042)await reserveBetaWallet(ownerId,id);
 
     const key = agent.walletCreationKey || crypto.randomUUID();
     const claimed = await db.update(agents).set({ status: "creating", walletCreationKey: key }).where(and(eq(agents.id, id), eq(agents.ownerId, ownerId), eq(agents.status, "active"), isNull(agents.walletId))).returning({ id: agents.id });
