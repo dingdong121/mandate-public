@@ -1,0 +1,14 @@
+import fs from 'node:fs';import vm from 'node:vm';import ts from 'typescript';import assert from 'node:assert/strict';
+const context={exports:{},require:()=>({fail:()=>{throw Error('denied');}})};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/mainnet-test-scope.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,context);
+const check=context.exports.assertMainnetTestScope;
+const bounty={id:'b23f270b-3d8b-4f05-aea1-398644ca1295',chainId:5042,rewardMicros:10000,ownerId:'email_51b8b27d-62ea-4048-a61c-3e10418094c1',providerAgentId:'f31f7f50-5812-470c-af63-fb0e6b6b07c1'};
+for(const stage of ['create_job_pending','budget_pending','approve_pending','fund_pending','submit_pending','complete_pending'])check(bounty,stage);
+for(const change of [{id:'another-task'},{rewardMicros:1000000},{ownerId:'other-owner'},{providerAgentId:'other-agent'}])assert.throws(()=>check({...bounty,...change},'fund_pending'),/denied/);
+for(const stage of ['refund_pending','reject_pending','arbitrary'])assert.throws(()=>check(bounty,stage),/denied/);
+console.log('PASS approved six stages; different job, amount, payer, provider and unapproved refund/reject denied. Pure authorization test.');
+const refund={...bounty,id:'3575c13d-051f-4cec-ac70-35db0af0fce6'};
+for(const stage of ['create_job_pending','budget_pending','approve_pending','fund_pending','submit_pending','reject_pending','refund_pending'])check(refund,stage);
+assert.throws(()=>check(refund,'complete_pending'),/denied/);
+console.log('PASS refund task seven-stage scope; payout forbidden on refund test.');
+check({...bounty,id:'6085a20b-3758-4a4e-af9f-0b96876b00e9'},'complete_pending');

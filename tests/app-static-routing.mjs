@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+import assert from 'node:assert/strict';
+let assetCalls=0,appCalls=0;
+const handler={fetch:async()=>{appCalls++;return new Response('app');}};
+const context={exports:{},URL,Request,Response,require:()=>({default:handler,authenticatedAppRequest:async r=>r,mainnetPreflight:async()=>new Response('preflight')})};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('deployment/app-worker.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,context);
+const env={ASSETS:{fetch:async()=>{assetCalls++;return new Response('asset');}}};
+for(const path of ['/_next/static/css/index.css','/_next/static/chunks/app.js'])assert.equal(await (await context.exports.default.fetch(new Request('https://example.invalid'+path),env,{})).text(),'asset');
+assert.equal(assetCalls,2);assert.equal(appCalls,0);
+assert.equal((await context.exports.default.fetch(new Request('https://example.invalid/api/agents'),env,{})).status,401);
+console.log('PASS framework CSS/JS delegated to asset binding, unauthenticated API denied. Mock routing test only.');

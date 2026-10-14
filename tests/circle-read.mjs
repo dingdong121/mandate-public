@@ -1,0 +1,16 @@
+import fs from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+import assert from 'node:assert/strict';
+let calls=0,reply=()=>Response.json({data:{transactions:[]}});
+const context=vm.createContext({URL,Response,AbortSignal,fetch:async(url,options)=>{calls++;assert.equal(url.origin,'https://api.circle.com');assert.equal(url.pathname,'/v1/w3s/transactions');assert.equal(options.method,'GET');return reply();}});
+const source=ts.transpileModule(fs.readFileSync('lib/circle-transaction-read.ts','utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
+const mod=new vm.SourceTextModule(source,{context});
+await mod.link(spec=>new vm.SyntheticModule(spec==='cloudflare:workers'?['env']:spec==='server-only'?[]:spec==='./payment-network'?['paymentNetwork']:['fail'],function(){if(spec==='cloudflare:workers')this.setExport('env',{CIRCLE_API_KEY:'TEST-SECRET',CIRCLE_PRIMARY_WALLET_ID:'mock'});else if(spec==='./payment-network')this.setExport('paymentNetwork',id=>({name:id===5042?'mainnet':'testnet'}));else if(spec!=='server-only')this.setExport('fail',()=>{throw Error('closed');});},{context}));
+await mod.evaluate();
+assert.equal((await mod.namespace.readCircleTransactions()).ok,true);
+reply=()=>Response.json({code:155501,message:'TEST-SECRET'},{status:400});
+const bad=await mod.namespace.readCircleTransactions();assert.equal(bad.httpStatus,400);assert.equal(bad.providerCode,155501);assert.equal(JSON.stringify(bad).includes('TEST-SECRET'),false);
+reply=()=>{throw Error('TEST-SECRET');};assert.equal((await mod.namespace.readCircleTransactions()).phase,'circle_transport_or_json');
+reply=()=>Response.json({invalid:'TEST-SECRET'});assert.equal((await mod.namespace.readCircleTransactions()).phase,'circle_response_shape');
+assert.equal(calls,4);console.log('PASS fixed-origin GET-only / no retry / numeric error redaction / transport / response shape');

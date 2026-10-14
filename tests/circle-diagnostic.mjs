@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { route, sqlite, state } from './route-harness.mjs';
+const {circleDiagnostic}=await route('lib/circle-diagnostic.ts');
+assert.deepEqual(JSON.parse(JSON.stringify(circleDiagnostic({response:{status:400,data:{code:155501,message:'SECRET'}},config:{headers:{authorization:'SECRET'}}}))),{httpStatus:400,providerCode:155501,fieldErrors:[]});
+assert.equal(JSON.stringify(circleDiagnostic({code:'SECRET',message:'SECRET'})).includes('SECRET'),false);
+assert.equal(circleDiagnostic(null).httpStatus,null);
+const wrapped=circleDiagnostic({status:400,code:2,error:{response:{status:400,data:{code:2,errors:[{location:'request.refId',error:'max',invalidValue:'SECRET',message:'SECRET',constraints:{secret:'SECRET'}},{location:'SECRET',error:'SECRET'}]}}}});
+assert.deepEqual(JSON.parse(JSON.stringify(wrapped.fieldErrors)),[{field:'refId',reason:'max'},{field:'unknown_field',reason:'validation_failed'}]);
+assert.equal(JSON.stringify(wrapped).includes('SECRET'),false);
+assert.equal(state.sends,0);
+console.log('PASS diagnostic numeric allowlist / secret redaction / null / zero sends');
+sqlite.close();

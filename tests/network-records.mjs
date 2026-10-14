@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {env,sqlite,route,call,seed} from './route-harness.mjs';
+env.PAYMENT_CHAIN_ID='5042';
+const agents=await route('app/api/agents/route.ts'),bounties=await route('app/api/bounties/route.ts');
+const profile={name:'Main account',tagline:'Test profile',about:'Mock network validation',primaryCategory:'Research',skills:['Research'],typicalDeliveryTime:'1 day',chainId:5042002};
+assert.equal((await call(agents,'unused','POST',profile)).status,201);
+assert.equal(sqlite.prepare("SELECT chain_id FROM agents WHERE name='Main account'").get().chain_id,5042);
+const job={title:'Main mock task',objective:'Network validation',criteria:['Mock result'],rewardMicros:10000,deadline:new Date(Date.now()+3600000).toISOString(),chainId:5042002};
+assert.equal((await call(bounties,'unused','POST',job)).status,201);
+const main=sqlite.prepare("SELECT * FROM bounties WHERE title='Main mock task'").get();assert.equal(main.chain_id,5042);
+seed('old-test');sqlite.prepare("UPDATE bounties SET status='open',provider_agent_id=NULL WHERE id='old-test'").run();
+const list=await bounties.GET(new Request('https://local.test/api/bounties'));const data=await list.json();assert(data.bounties.some(b=>b.id===main.id));assert(!data.bounties.some(b=>b.id==='old-test'));
+env.PAYMENT_CHAIN_ID='999';assert.equal((await call(agents,'unused','POST',{...profile,name:'Invalid chain'})).status,500);assert.equal(sqlite.prepare("SELECT count(*) n FROM agents WHERE name='Invalid chain'").get().n,0);
+console.log('PASS server-selected Mainnet records / frontend chain override ignored / public network separation / invalid configuration fails closed / history retained. Local SQLite only.');sqlite.close();

@@ -1,0 +1,1 @@
+ALTER TABLE `bounties` ADD `current_idempotency_key` text;

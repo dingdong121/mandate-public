@@ -1,0 +1,2 @@
+DROP INDEX `idx_contract_deployments_owner_kind_chain`;--> statement-breakpoint
+CREATE UNIQUE INDEX `idx_contract_deployments_owner_kind_chain_version` ON `contract_deployments` (`owner_id`,`kind`,`chain_id`,`contract_version`);

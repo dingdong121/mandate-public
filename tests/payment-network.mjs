@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {route,sqlite} from './route-harness.mjs';
+const n=await route('lib/payment-network.ts');
+const test={CIRCLE_API_KEY:'test-key',CIRCLE_ENTITY_SECRET:'test-secret',CIRCLE_WALLET_SET_ID:'test-set',ARC_RPC_URL:'https://test.invalid'};
+const main={CIRCLE_MAINNET_API_KEY:'main-key',CIRCLE_MAINNET_ENTITY_SECRET:'main-secret',CIRCLE_MAINNET_WALLET_SET_ID:'main-set',ARC_MAINNET_RPC_URL:'https://main.invalid'};
+assert.equal(n.paymentNetwork(5042).blockchain,'ARC');assert.equal(n.paymentNetwork(5042002).blockchain,'ARC-TESTNET');
+for(const id of [0,1,5043,NaN])assert.throws(()=>n.paymentNetwork(id));
+assert.throws(()=>n.paymentCredentials(5042,test));assert.throws(()=>n.paymentCredentials(5042002,main));
+const both={...test,...main};assert.equal(n.paymentCredentials(5042,both,true).apiKey,'main-key');assert.equal(n.paymentCredentials(5042002,both,true).apiKey,'test-key');
+assert.equal(n.paymentCredentials(5042,both).rpcUrl,'https://main.invalid');assert.equal(n.paymentCredentials(5042002,both).rpcUrl,'https://test.invalid');
+assert.throws(()=>n.paymentCredentials(5042,{...main,CIRCLE_MAINNET_WALLET_SET_ID:undefined},true));
+assert.throws(()=>n.paymentCredentials(5042,{...main,CIRCLE_MAINNET_ENTITY_SECRET:undefined}));
+console.log('PASS exact chain pairs / unknown chain denied / separate credentials and RPC / no cross-network fallback / provisioning requires wallet set. Mainnet routes remain paused and unadapted.');sqlite.close();

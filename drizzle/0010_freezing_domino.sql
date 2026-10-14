@@ -1,0 +1,1 @@
+ALTER TABLE `agents` ADD `wallet_creation_key` text;

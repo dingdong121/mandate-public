@@ -1,0 +1,45 @@
+// Actual handlers/SQLite, MOCK Circle/RPC. No real deployment or credentials.
+import assert from 'node:assert/strict';
+import { getCreateAddress, Interface } from 'ethers';
+import { verifiedArtifact } from '../contracts/scripts/verify-artifact.mjs';
+import { env,state,sqlite,route,seed,client } from './route-harness.mjs';
+const api=await route('app/api/contracts/escrow/route.ts');seed();
+let checks=0;const equal=(a,b)=>{assert.equal(a,b);checks++;};
+const usdc='0x3600000000000000000000000000000000000000';
+const {artifact,immutableReferences}=verifiedArtifact();
+let code=artifact.deployedBytecode.slice(2);for(const refs of Object.values(immutableReferences))for(const {start,length}of refs)code=code.slice(0,start*2)+usdc.slice(2).padStart(length*2,'0')+code.slice((start+length)*2);code='0x'+code;
+const initcode=artifact.bytecode+usdc.slice(2).padStart(64,'0'),hash='0x'+'ab'.repeat(32),address=getCreateAddress({from:client,nonce:0});
+let receipt={status:'0x1',from:client,to:null,contractAddress:address,transactionHash:hash};
+let transaction={from:client,to:null,input:initcode,nonce:'0x0',value:'0x0',chainId:'0x'+(5042002).toString(16),hash};
+const token=new Interface(['function usdc() view returns(address)']);
+state.rpcOverride=(method,params)=>({eth_chainId:state.chain,eth_estimateGas:'0x130000',eth_gasPrice:'0x2540be400',eth_getBalance:'0x'+(20n*10n**18n).toString(16),eth_getTransactionReceipt:receipt,eth_getTransactionByHash:transaction,eth_call:token.encodeFunctionResult('usdc',[usdc]),eth_getCode:String(params?.[0]).toLowerCase()===client?'0x':code})[method];
+async function request(method='GET',action,owner='A',key=crypto.randomUUID(),preflight=false){return api[method](new Request('https://local.test/api/contracts/escrow'+(preflight?'?preflight=1':''),{method,headers:{...(owner?{'oai-authenticated-user-id':owner}:{}),origin:'https://local.test','content-type':'application/json','idempotency-key':key},...(method==='POST'?{body:JSON.stringify({action})}:{})}));}
+equal((await request('GET',undefined,'',undefined,true)).status,401);
+equal((await request('GET',undefined,'B',undefined,true)).status,403);
+await (await route('lib/escrow-deployment.ts')).deploymentPreflight('A');
+equal((await request('GET',undefined,'A',undefined,true)).status,200);equal(state.deploySends,0);
+equal((await request('POST','deploy_v2')).status,423);equal(state.deploySends,0);
+env.CHAIN_WRITES_ENABLED='testnet-approved';
+env.ESCROW_DEPLOYMENT_ENABLED='testnet-approved';
+equal((await request('POST','deploy_v2','B')).status,403);equal(state.deploySends,0);
+state.walletNetwork='ARC';equal((await request('POST','deploy_v2')).status,409);equal(state.deploySends,0);delete state.walletNetwork;
+state.chain='0x13b2';equal((await request('POST','deploy_v2')).status,503);equal(state.deploySends,0);state.chain='0x'+(5042002).toString(16);
+const key=crypto.randomUUID();equal((await request('POST','deploy_v2','A',key)).status,202);equal(state.deploySends,1);
+equal(state.deploymentInput.blockchain,'ARC-TESTNET');equal(state.deploymentInput.constructorParameters[0],usdc);equal(state.deploymentInput.bytecode,artifact.bytecode);
+equal((await request('POST','deploy_v2','A',key)).status,202);equal((await request('POST','deploy_v2')).status,202);equal(state.deploySends,1);
+state.transactions.set('deployment-tx',{state:'COMPLETE',txHash:hash});state.contractMetadata={blockchain:'ARC-TESTNET',contractAddress:address,deploymentTransactionId:'deployment-tx'};
+env.CHAIN_WRITES_ENABLED=undefined; // reconciliation must not send
+transaction={...transaction,input:'0x6000'};equal((await request('POST','reconcile')).status,409);
+transaction={...transaction,input:initcode};receipt={...receipt,status:'0x0'};equal((await request('POST','reconcile')).status,409);
+receipt={...receipt,status:'0x1',contractAddress:client};equal((await request('POST','reconcile')).status,409);
+receipt={...receipt,contractAddress:address};const validCode=code;code='0x6000';equal((await request('POST','reconcile')).status,409);code=validCode;
+equal((await request('POST','reconcile')).status,200);
+equal(sqlite.prepare('SELECT status FROM contract_deployments WHERE contract_version=2').get().status,'complete');equal(state.deploySends,1);
+equal((await request('POST','reconcile','B')).status,403);equal(state.deploySends,1);
+sqlite.prepare('DELETE FROM contract_deployments WHERE contract_version=2').run();
+env.ESCROW_DEPLOYMENT_ENABLED='testnet-approved';state.throwDeploy=true;
+equal((await request('POST','deploy_v2')).status,503);equal(state.deploySends,2);
+equal((await request('POST','deploy_v2')).status,202);equal(state.deploySends,2);
+equal(sqlite.prepare("SELECT count(*) n FROM financial_operations WHERE status='uncertain'").get().n,1);
+console.log(`PASS ${checks} V2 deployment authorization/network/paused/duplicate/receipt/runtime/uncertain-send checks (MOCK only).`);
+sqlite.close();
